@@ -6,7 +6,7 @@ The TimerView Widget is the Toggl Today Widget that should really be in the app,
 
 1. Install Pythonista for iOS
 
-2. Install [link](https://github.com/ywangd/stash "StaSH")
+2. Install [StaSH](https://github.com/ywangd/stash)
 	* Run StaSH
 	* `pip install pytodoist`
 
