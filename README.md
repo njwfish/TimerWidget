@@ -1,6 +1,6 @@
 ## Synopsis
 
-The TimerView Widget is the Toggl Today Widget that should really be in the app, but its even better. This widgetinterfaces with your Todoist account too, allowing you to track the amount of time spent on a given task in Todoist. It assumes you have corresponding Labels in Todoist for the projects you have in Toggl (as this is how my workflow is setup).
+The TimerView Widget is the Toggl Today Widget that should really be in the app, but its even better. This widget interfaces with your Todoist account too, allowing you to track the amount of time spent on a given Todoist task using Toggl. It assumes you have corresponding Labels in Todoist for the Projects you have in Toggl (as this is how my workflow is setup).
 
 ## Installation
 
