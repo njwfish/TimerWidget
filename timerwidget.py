@@ -8,13 +8,13 @@ from operator import itemgetter
 
 # Creating the toggl API object
 from toggl.TogglPy import Toggl
-toggl_api = "fa786d294f27988b9788d799e0822ba2"
+toggl_api = "api"
 toggl = Toggl()
 toggl.setAPIKey(toggl_api)
 
 # Creating the Todoist API object
 from pytodoist import todoist as Todoist
-todoist = Todoist.login('njwfish@gmail.com', 'projects = user.get_projects()')
+todoist = Todoist.login('email', 'password')
 
 COLS = 3
 
