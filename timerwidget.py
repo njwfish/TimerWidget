@@ -2,24 +2,28 @@
 
 import appex, ui
 import os
+import pickle
 import datetime
 from math import ceil, floor
 from operator import itemgetter
 
 # Creating the toggl API object
 from toggl.TogglPy import Toggl
-toggl_api = "api"
+
+toggl_api = "api_key"
 toggl = Toggl()
 toggl.setAPIKey(toggl_api)
 
 # Creating the Todoist API object
 from pytodoist import todoist as Todoist
+
 todoist = Todoist.login('email', 'password')
 
+# Change this value to alter the number of columns in the grid of timers
 COLS = 3
 
 
-class TimerView (ui.View):
+class TimerView(ui.View):
     """
     The TimerView Widget is the Toggl Today Widget that should really be in the app, but its even better. This widget
     interfaces with your Todoist account too, allowing you to track the amount of time spent on a given task in
@@ -45,6 +49,7 @@ class TimerView (ui.View):
 
     Secondly, Pythonista widgets crash when there are constants, so all variables are incorporated in the view object.
     """
+
     def __init__(self, cols, *args, **kwargs):
         """
         Initialize all the variables, most importantly, initialize all of the viewable elements that will comprise the
@@ -137,13 +142,14 @@ class TimerView (ui.View):
         # The current page we're displaying
         self.page = 0
         # Tasks per page, with is a function of how vertically tall the table view is. It is hardcoded because I'm lazy.
-        self.tasks_per_page = 8
+        self.tasks_per_page = int(self.height / 45)
 
     def layout(self):
         """
         This paints the screen with the current viewable objects, its all fidgety graphics stuff
         """
         if self.task_selector:
+            self.tasks_per_page = int(self.height / 45)
             self.current_color.alpha = 0
             self.current_time.alpha = 0
             self.current_timer_name.alpha = 0
@@ -152,26 +158,26 @@ class TimerView (ui.View):
             self.exit_task_selector.frame = ui.Rect(0, 0, self.width, self.height)
             self.exit_task_selector.alpha = .5
             th = self.height - 50
-            self.task_list.frame = ui.Rect(30, 10, self.width-60, th+30)
+            self.task_list.frame = ui.Rect(30, 10, self.width - 60, th + 30)
             self.task_list.alpha = 1
-            self.add.frame = ui.Rect(self.width-45, th+5, 40, 40)
+            self.add.frame = ui.Rect(self.width - 45, th + 5, 40, 40)
             self.add.alpha = 1
-            self.last_page.frame = ui.Rect(5, th-45, 40, 40)
+            self.last_page.frame = ui.Rect(5, th - 45, 40, 40)
             self.next_page.alpha = 1
-            self.next_page.frame = ui.Rect(5, th+5, 40, 40)
+            self.next_page.frame = ui.Rect(5, th + 5, 40, 40)
             self.last_page.alpha = 1
         else:
             self.update_current_timer()
             self.current_color.frame = ui.Rect(0, 0, self.width, 50)
             self.current_color.alpha = 1
-            self.current_time.frame = ui.Rect(self.width-70, 5, 65, 40)
+            self.current_time.frame = ui.Rect(self.width - 70, 5, 65, 40)
             self.current_time.alpha = 1
             self.current_timer_name.frame = ui.Rect(0, 0, self.width, 50)
             self.current_timer_name.alpha = 1
             bw = self.width / self.cols
             bh = self.row_height
             for i, btn in enumerate(self.buttons):
-                btn.frame = ui.Rect(i % self.cols * bw, i//self.cols * bh + 50, bw, bh).inset(2, 2)
+                btn.frame = ui.Rect(i % self.cols * bw, i // self.cols * bh + 50, bw, bh).inset(2, 2)
                 btn.alpha = 1 if btn.frame.max_y < self.height else 0
             self.exit_task_selector.alpha = 0
             self.task_list.alpha = 0
@@ -197,8 +203,8 @@ class TimerView (ui.View):
         self.tasks = [t for t in self.api_vars.tasks if label in [self.api_vars.labels[l] for l in t.labels]]
         # Sort by project, then task content, alphabetically
         self.tasks.sort(key=lambda t: (t.project.name, t.content))
-        # Create a list of task names (the above is a list of objects), prepend '#Project' for each task
-        self.task_names = [" #" + t.project.name + " " + t.content for t in self.tasks]
+        # Create a list of task names (the above is a list of objects), prepend '#Project' for each task add an option with no description to allow simply starting a timer
+        self.task_names = ["No description"] + [" #" + t.project.name + " " + t.content for t in self.tasks]
         # Update the tasks currently in the page
         self.update_page()
 
@@ -206,9 +212,18 @@ class TimerView (ui.View):
         """
         Update the tasks currently in the page
         """
+        self.remove_subview(self.task_list)
+        self.remove_subview(self.add)
+        self.remove_subview(self.next_page)
+        self.remove_subview(self.last_page)
         # Only display tasks_per_page tasks at a time
         start, end = self.page * self.tasks_per_page, (self.page + 1) * self.tasks_per_page
-        self.task_list.data_source = ui.ListDataSource(items=self.task_names[start:end])
+        self.task_list = ui.TableView(action=self.select_task,
+                                      data_source=ui.ListDataSource(items=self.task_names[start:end]), corner_radius=10)
+        self.add_subview(self.task_list)
+        self.add_subview(self.add)
+        self.add_subview(self.next_page)
+        self.add_subview(self.last_page)
 
     # --BUTTONS-- #
     # All of these functions must be set up to take a 'sender' as a parameter, because when buttons call them,
@@ -222,8 +237,17 @@ class TimerView (ui.View):
         accordingly.
         :param sender: the button that was pressed, not used
         """
-        # Get the elapsed time
+        # If the user pressed the button, update API info
+        if sender is not None:
+            self.api_vars.update_api_variables()
         current_timer = toggl.currentRunningTimeEntry()['data']
+        # If there is no timer, set defaults and return
+        if current_timer is None:
+            self.current_time.title = ''
+            self.current_color.bg_color = '#000000'
+            self.current_timer_name.text = ''
+            return
+        # Get the elapsed time
         start_time = str(current_timer['start'].split('+')[0])
         current_time = datetime.datetime.utcnow() - datetime.datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%S")
         self.current_time.title = ':'.join(str(current_time).split(':')[:2])
@@ -261,9 +285,13 @@ class TimerView (ui.View):
         :return:
         """
         # Get the correct task from the list, with associated information
-        task = self.tasks[self.task_list.selected_row[1] + self.page * self.tasks_per_page]
-        tags = [task.project.name] + [self.api_vars.labels[l] for l in task.labels]
-        task = task.content
+        if self.task_list.selected_row[1] == 0 and self.page == 0:
+            task = ''
+            tags = []
+        else:
+            task = self.tasks[self.task_list.selected_row[1] + self.page * self.tasks_per_page - 1]
+            tags = [task.project.name] + [self.api_vars.labels[l] for l in task.labels]
+            task = task.content
         # Start the timer
         self.start_timer(task, tags, self.pid)
         # Switch back to the Timer Selection View
@@ -316,6 +344,7 @@ class ApiVariables:
     """
     This class holds all of the API updated variables for easy access and updates.
     """
+
     def __init__(self):
         """
         Initialize all the variables to be tracked and pull from their APIs
@@ -325,7 +354,34 @@ class ApiVariables:
         self.toggl_tags = []
         self.labels = []
         self.tasks = []
-        self.update_api_variables()
+        self.load_api_variables()
+
+    def push_api_variables(self):
+        with open('toggl_workspaces.txt', 'wb') as f:
+            pickle.dump(self.toggl_workspaces, f, pickle.HIGHEST_PROTOCOL)
+        with open('toggl_projects.txt', 'wb') as f:
+            pickle.dump(self.toggl_projects, f, pickle.HIGHEST_PROTOCOL)
+        with open('toggl_tags.txt', 'wb') as f:
+            pickle.dump(self.toggl_tags, f, pickle.HIGHEST_PROTOCOL)
+        with open('labels.txt', 'wb') as f:
+            pickle.dump(self.labels, f, pickle.HIGHEST_PROTOCOL)
+        with open('tasks.txt', 'wb') as f:
+            pickle.dump(self.tasks, f, pickle.HIGHEST_PROTOCOL)
+
+    def load_api_variables(self):
+        try:
+            with open('toggl_workspaces.txt', 'rb') as f:
+                self.toggl_workspaces = pickle.load(f)
+            with open('toggl_projects.txt', 'rb') as f:
+                self.toggl_projects = pickle.load(f)
+            with open('toggl_tags.txt', 'rb') as f:
+                self.toggl_tags = pickle.load(f)
+            with open('labels.txt', 'rb') as f:
+                self.labels = pickle.load(f)
+            with open('tasks.txt', 'rb') as f:
+                self.tasks = pickle.load(f)
+        except IOError as e:
+            self.update_api_variables()
 
     def update_api_variables(self):
         """
@@ -338,16 +394,16 @@ class ApiVariables:
             # Get Toggl projects, and if actual_hours not in project, add it
             self.toggl_projects += [p if 'actual_hours' in p else {**p, **{'actual_hours': 0}}
                                     for p in toggl.getWorkspaceProjects(w['id'])]
-        # sort projects by hours logged
+        # Sort projects by hours logged
         self.toggl_projects = sorted(self.toggl_projects, key=itemgetter('actual_hours', 'color'), reverse=True)
         self.toggl_tags = [t['name'] for w in self.toggl_workspaces for t in toggl.getWorkspaceTags(w['id'])]
-
         # Todoist
         self.labels = todoist.get_labels()
         self.labels = {l.id: l.name for l in self.labels}
         # PyTodoist has an get_uncompleted_tasks, but its very bad. Unclear why is exists: in any case, this seems to
         # work correctly
         self.tasks = todoist.get_tasks()
+        self.push_api_variables()
 
 
 def main():
@@ -359,6 +415,7 @@ def main():
         v = TimerView(COLS)
         v.name = widget_name
         appex.set_widget_view(v)
+
 
 if __name__ == '__main__':
     main()
